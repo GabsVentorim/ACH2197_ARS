@@ -70,14 +70,14 @@ def filtro_hibrido(df_fundo_ativos, matriz_fundos_ativos, cnpj_fundo, top_n=10):
 
         # Combinação utilizando pesos
         pontuacao_combinada = (
-            0.3 * pontuacoes['colaborativo'] +
-            0.3 * pontuacoes['conteudo'] +
-            0.3 * pontuacoes['grafo']
+            pontuacoes['colaborativo'] +
+            pontuacoes['conteudo'] +
+            pontuacoes['grafo']
         )
 
         resultados_combinados.append({
             'ativo': acao,
-            'pontuacao_combinada': pontuacao_combinada,
+            'pontuacao': pontuacao_combinada,
             'pontuacao_colaborativo': pontuacoes['colaborativo'],
             'pontuacao_conteudo': pontuacoes['conteudo'],
             'pontuacao_grafo': pontuacoes['grafo'],
@@ -85,9 +85,9 @@ def filtro_hibrido(df_fundo_ativos, matriz_fundos_ativos, cnpj_fundo, top_n=10):
         })
     
     resultados = pandas.DataFrame(resultados_combinados)
-    resultados = resultados.sort_values('pontuacao_combinada', ascending=False).head(top_n)
+    resultados = resultados.sort_values('pontuacao', ascending=False).head(top_n)
 
     # Adiciona os detalhes das ações
-    resultados = funcoes_auxiliares.adiciona_detalhes_acao(df_fundo_ativos ,resultados)
+    #resultados = funcoes_auxiliares.adiciona_detalhes_acao(df_fundo_ativos ,resultados)
         
     return resultados

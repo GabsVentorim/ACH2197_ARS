@@ -4,14 +4,13 @@ import datetime
 import os # Import 'os' para criar o diretório de saída
 
 # --- 1. Configurações ---
-ARQUIVO_ENTRADA = "../output/cotacoes_historicas_202501_20251102_121101.csv" 
+ARQUIVO_ENTRADA = "../output/cotacoes_historicas_2024.csv" 
 
 # Cria o diretório de saída (ex: '../output') se ele não existir
 os.makedirs('../output', exist_ok=True)
 
 # Gera um timestamp (Data/Hora) para criar nomes de arquivos únicos
-agora = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-ARQUIVO_SAIDA = f"../output/cotacoes_limpas_202501_{agora}.csv"
+ARQUIVO_SAIDA = f"../output/cotacoes_limpas_2024.csv"
 
 
 # Definindo os códigos de ativos que queremos manter (Ativos contidos nas carteiras)

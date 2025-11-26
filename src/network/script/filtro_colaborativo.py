@@ -48,7 +48,7 @@ def filtro_colaborativo(df_fundos_ativos, matriz_fundo_acao, cnpj_fundo, top_n=1
     # Calcula a pontuação para os ativos candidatos
     recomendacoes = {}
 
-    for fundo_similar, similaridade in fundos_similares.head(2*top_n).items():
+    for fundo_similar, similaridade in fundos_similares.items():
         ativos = matriz_fundo_acao.loc[fundo_similar]
         ativos = ativos[ativos > 0]
 
@@ -65,16 +65,17 @@ def filtro_colaborativo(df_fundos_ativos, matriz_fundo_acao, cnpj_fundo, top_n=1
                 'ativo': acao,
                 'pontuacao': pontuacao,
                 'quantidade_fundos_similares': sum(
-                    1 for fundo in fundos_similares.head(2*top_n).index
+                    1 for fundo in fundos_similares.index
                     if matriz_fundo_acao.loc[fundo, acao] > 0
                 )
             }
             for acao, pontuacao in recomendacoes.items()
         ]).sort_values('pontuacao', ascending=False).head(top_n)
+    
 
         # Adiciona os detalhes do ativo 
-        resultados_com_detalhes = funcoes_auxiliares.adiciona_detalhes_acao(df_fundos_ativos, resultados)
+        #resultados_com_detalhes = funcoes_auxiliares.adiciona_detalhes_acao(df_fundos_ativos, resultados)
 
-        return resultados_com_detalhes
+        return resultados
     
     return pandas.DataFrame()

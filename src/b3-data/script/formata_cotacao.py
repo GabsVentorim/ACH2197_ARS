@@ -3,14 +3,12 @@ import datetime
 import os
 
 # --- 1. Configurações ---
-ARQUIVO_ENTRADA = "../input/COTAHIST_M012025.TXT"
+ARQUIVO_ENTRADA = "../input/COTAHIST_A2024.TXT"
 
 # Cria o diretório de saída (ex: '../output') se ele não existir
 os.makedirs('../output', exist_ok=True)
 
-# Gera um timestamp (Data/Hora) para criar nomes de arquivos únicos
-agora = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-ARQUIVO_SAIDA = f"../output/cotacoes_historicas_202501_{agora}.csv"
+ARQUIVO_SAIDA = f"../output/cotacoes_historicas_2024.csv"
 
 print(f"Iniciando formatacao do arquivo: {ARQUIVO_ENTRADA}")
 print("Este processo pode demorar alguns segundos...")

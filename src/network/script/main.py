@@ -1,14 +1,17 @@
 import pandas as pd
 import sys
 import os
-from typing import Dict
+from typing import Dict, List
+import glob
+import random
+import re
 
-import filtro_grafo
 import filtro_grafo_compra_venda
 import filtro_colaborativo
 import filtro_conteudo
 import filtro_hibrido
 import funcoes_auxiliares
+import validacao
 
 class SistemaRecomendadorAcoes:
     """
@@ -26,7 +29,8 @@ class SistemaRecomendadorAcoes:
         Args:
             caminho_csv: Caminho para o arquivo CSV com dados de carteiras
         """
-        self.df = pd.read_csv(caminho_csv, sep=',', encoding='utf-8-sig')
+        self.caminho_csv = caminho_csv
+        self.df = pd.read_csv(caminho_csv, sep=';', encoding='utf-8-sig')
         self._preprocessar_dados()
         
     def _preprocessar_dados(self):
@@ -58,7 +62,38 @@ class SistemaRecomendadorAcoes:
         print(f"📊 Fundos únicos: {self.df_fundos_ativos['CNPJ_FUNDO_CLASSE'].nunique()}")
         print(f"📈 Ações únicas: {self.df_fundos_ativos['CD_ATIVO'].nunique()}")
     
+    def obter_fundos_disponiveis(self) -> List[str]:
+        """
+        Retorna lista de fundos disponíveis no dataset.
+        
+        Returns:
+            Lista com CNPJs dos fundos
+        """
+        return sorted(self.df_fundos_ativos['CNPJ_FUNDO_CLASSE'].unique().tolist())
+    
+    def obter_periodo_arquivo(self) -> str:
+        """
+        Extrai o período (mês/ano) do nome do arquivo.
+        
+        Returns:
+            String no formato YYYYMM
+        """
+        nome_arquivo = os.path.basename(self.caminho_csv)
+        match = re.search(r'(\d{6})', nome_arquivo)
+        if match:
+            return match.group(1)
+        return "000000"
+    
     def obter_perfil_fundo(self, cnpj_fundo: str) -> Dict:
+        """
+        Obtém o perfil do fundo.
+        
+        Args:
+            cnpj_fundo: CNPJ do fundo alvo
+            
+        Returns:
+            Dicionário com informações do perfil do fundo
+        """
         funcoes_auxiliares.obtem_perfil_fundo(self.df_fundos_ativos, cnpj_fundo)
     
     def recomendar_filtragem_colaborativa(self, cnpj_fundo: str, top_n: int = 10) -> pd.DataFrame:
@@ -139,9 +174,9 @@ class SistemaRecomendadorAcoes:
         )
         return resultados
     
-    def comparar_abordagens(self, cnpj_fundo: str, top_n: int = 10) -> Dict[str, pd.DataFrame]:
+    def processar_recomendacoes(self, cnpj_fundo: str, top_n: int = 10) -> Dict[str, pd.DataFrame]:
         """
-        Compara todas as abordagens de recomendação.
+        Processa todas as recomendações para um fundo.
         
         Args:
             cnpj_fundo: CNPJ do fundo alvo
@@ -150,74 +185,169 @@ class SistemaRecomendadorAcoes:
         Returns:
             Dicionário com resultados de cada abordagem
         """
-        print("\n" + "="*60)
-        print("GERANDO RECOMENDAÇÕES PARA O FUNDO")
-        print("="*60)
+        print(f"\n{'='*60}")
+        print(f"PROCESSANDO RECOMENDAÇÕES PARA FUNDO: {cnpj_fundo}")
+        print(f"{'='*60}")
         
-        resultados = {
-            'filtragem_colaborativa': self.recomendar_filtragem_colaborativa(cnpj_fundo, top_n),
-            'filtragem_conteudo': self.recomendar_filtragem_conteudo(cnpj_fundo, top_n),
-            'analise_grafo': self.recomendar_analise_grafo(cnpj_fundo, top_n),
-            'hibrido': self.recomendar_filtro_hibrido(cnpj_fundo, top_n)
-        }
+        resultados = {}
+        
+        print("🔍 Filtragem Colaborativa...")
+        resultados['filtragem_colaborativa'] = self.recomendar_filtragem_colaborativa(cnpj_fundo, top_n)
+        
+        print("🔍 Filtragem por Conteúdo...")
+        resultados['filtragem_conteudo'] = self.recomendar_filtragem_conteudo(cnpj_fundo, top_n)
+        
+        print("🔍 Análise de Grafo...")
+        resultados['analise_grafo'] = self.recomendar_analise_grafo(cnpj_fundo, top_n)
+        
+        print("🔍 Filtro Híbrido...")
+        resultados['hibrido'] = self.recomendar_filtro_hibrido(cnpj_fundo, top_n)
+        
         return resultados
     
-    def salvar_recomendacoes(self, resultados: Dict[str, pd.DataFrame], diretorio_saida: str = '../saida') -> None:
+    def salvar_recomendacoes(self, cnpj_fundo: str, resultados: Dict[str, pd.DataFrame], 
+                            diretorio_saida: str = '../output') -> None:
         """
-        Salva as recomendações em arquivos CSV.
+        Salva as recomendações em arquivos CSV com formato específico.
+        Cria uma pasta para cada período e adiciona colunas de validação.
         
         Args:
+            cnpj_fundo: CNPJ do fundo
             resultados: Dicionário com resultados de cada abordagem
-            diretorio_saida: Diretório de saída
+            diretorio_saida: Diretório de saída base
         """
-        os.makedirs(diretorio_saida, exist_ok=True)
+        periodo = self.obter_periodo_arquivo()
+        
+        # Cria subdiretório para o período
+        diretorio_periodo = os.path.join(diretorio_saida, f"periodo_{periodo}")
+        os.makedirs(diretorio_periodo, exist_ok=True)
+        
+        # Extrai mês e ano para validação
+        ano = int(periodo[:4])
+        mes = int(periodo[4:])
         
         for abordagem, df in resultados.items():
-            caminho_saida = os.path.join(diretorio_saida, f"recomendacoes_{abordagem}.csv")
-            df.to_csv(caminho_saida, sep=';', encoding='utf-8-sig', index=False)
-            print(f"✅ Recomendações {abordagem} salvas em: {caminho_saida}")
+            if df.empty:
+                print(f"⚠️  Nenhuma recomendação para {abordagem}")
+                continue
+            
+            # Seleciona apenas as colunas necessárias
+            colunas_necessarias = ['ativo', 'pontuacao'] if 'ativo' in df.columns else ['CD_ATIVO', 'pontuacao']
+            
+            if colunas_necessarias[0] not in df.columns:
+                colunas_possiveis = [col for col in df.columns if 'ativo' in col.lower()]
+                if colunas_possiveis:
+                    colunas_necessarias[0] = colunas_possiveis[0]
+            
+            df_saida = df[colunas_necessarias].copy()
+            df_saida.columns = ['ativo', 'pontuacao']
+            
+            # Adiciona validação
+            df_saida = validacao.adicionar_validacao_recomendacoes(
+                df_saida, 
+                mes, 
+                ano
+            )
+            
+            # Nome do arquivo: {cnpj}_{abordagem}_{periodo}.csv
+            nome_arquivo = f"{cnpj_fundo}_{abordagem}_{periodo}.csv"
+            caminho_saida = os.path.join(diretorio_periodo, nome_arquivo)
+            
+            df_saida.to_csv(caminho_saida, sep=';', encoding='utf-8-sig', index=False)
+            print(f"✅ Salvo: {nome_arquivo} ({len(df_saida)} recomendações)")
+
+
+def obter_arquivos_saida(diretorio: str = '../../output') -> List[str]:
+    """
+    Obtém lista de arquivos CSV na pasta de saída.
+    
+    Args:
+        diretorio: Diretório de saída
+        
+    Returns:
+        Lista com caminhos dos arquivos CSV
+    """
+    arquivos = glob.glob(os.path.join(diretorio, "carteiras_com_setores_*.csv"))
+    return sorted(arquivos)
+
+
+def selecionar_fundos_aleatorios(sistema: SistemaRecomendadorAcoes, quantidade: int) -> List[str]:
+    """
+    Seleciona fundos aleatoriamente para recomendação.
+    
+    Args:
+        sistema: Instância do SistemaRecomendadorAcoes
+        quantidade: Número de fundos a selecionar
+        
+    Returns:
+        Lista com CNPJs dos fundos selecionados
+    """
+    fundos_disponiveis = sistema.obter_fundos_disponiveis()
+    
+    print(f"\n📊 Fundos disponíveis: {len(fundos_disponiveis)}")
+    
+    if quantidade > len(fundos_disponiveis):
+        print(f"⚠️  Quantidade solicitada ({quantidade}) maior que fundos disponíveis.")
+        print(f"🔄 Selecionando todos os {len(fundos_disponiveis)} fundos disponíveis.\n")
+        quantidade = len(fundos_disponiveis)
+    
+    # Seleciona fundos aleatoriamente
+    fundos_selecionados = random.sample(fundos_disponiveis, quantidade)
+    
+    print(f"✅ {len(fundos_selecionados)} fundos selecionados aleatoriamente para análise\n")
+    
+    return fundos_selecionados
+
 
 # ==================== EXEMPLO DE USO ====================
 
 if __name__ == "__main__":
-    # Inicializa o sistema de recomendação
-    print("📂 Carregando Sistema de Recomendação de Ações...")
-    ARQUIVO_ENTRADA = '../../output/carteiras_com_setores_202406_amostra.csv'
-    sistema = SistemaRecomendadorAcoes(ARQUIVO_ENTRADA)
+    # Carrega dados de validação uma única vez
+    validacao.carregar_dados_validacao()
     
-    # Seleciona um fundo para análise
-    # Usaremos um dos maiores fundos
-    cnpj_fundo_alvo = '2661252000197'  # FAPI AGGRESSIVE IB MULTIMERCADO
+    # Obtém arquivos disponíveis
+    print("📂 Procurando arquivos de saída...")
+    arquivos = obter_arquivos_saida()
     
-    # Obtém perfil do fundo
-    sistema.obter_perfil_fundo(cnpj_fundo_alvo)
+    if not arquivos:
+        print("❌ Nenhum arquivo encontrado em ../../output/")
+        sys.exit(1)
     
-    # Aplica cada abordagem de recomendação
-    print(f"\n\n{'#'*60}")
-    print("GERANDO RECOMENDAÇÕES PARA O FUNDO")
-    print(f"{'#'*60}")
+    print(f"✅ Encontrados {len(arquivos)} arquivo(s)\n")
     
-    # 1. Filtragem Colaborativa
-    print("\n--- FILTRAGEM COLABORATIVA ---")
-    recomendacoes_colaborativo = sistema.recomendar_filtragem_colaborativa(cnpj_fundo_alvo, top_n=10)
-    print(recomendacoes_colaborativo.head(10))
-    
-    # 2. Filtragem por Conteúdo
-    print("\n--- FILTRAGEM POR CONTEÚDO ---")
-    recomendacoes_conteudo = sistema.recomendar_filtragem_conteudo(cnpj_fundo_alvo, top_n=10)
-    print(recomendacoes_conteudo.head(10))
-
-    # 3. Análise de Grafo
-    print("\n--- ANÁLISE DE GRAFO ---")
-    recomendacoes_grafo = sistema.recomendar_analise_grafo(cnpj_fundo_alvo, top_n=10)
-    print(recomendacoes_grafo[['ativo', 'nome', 'setor', 'pontuacao', 
-        'contagem_compras', 'contagem_vendas', 'proporcao_compra']].head(10))
-    
-    # 4. Filtro Híbrido
-    print("\n--- FILTRO HÍBRIDO ---")
-    recomendacoes_hibrido = sistema.recomendar_filtro_hibrido(cnpj_fundo_alvo, top_n=15)
-    print(recomendacoes_hibrido.head(15))
-    
-    print(f"\n{'='*60}")
-    print("SISTEMA DE RECOMENDAÇÃO FINALIZADO")
-    print(f"{'='*60}")
+    # Processa cada arquivo
+    for arquivo in arquivos:
+        print(f"\n{'#'*60}")
+        print(f"PROCESSANDO: {os.path.basename(arquivo)}")
+        print(f"{'#'*60}")
+        
+        # Inicializa sistema
+        sistema = SistemaRecomendadorAcoes(arquivo)
+        
+        # Define quantidade de fundos a processar
+        quantidade_fundos = 10
+        
+        # Seleciona fundos aleatoriamente
+        fundos_selecionados = selecionar_fundos_aleatorios(sistema, quantidade_fundos)
+        
+        # Processa recomendações para cada fundo
+        for i, cnpj_fundo in enumerate(fundos_selecionados, 1):
+            try:
+                print(f"\n[{i}/{len(fundos_selecionados)}] Processando fundo: {cnpj_fundo}")
+                
+                # Obtém perfil do fundo
+                sistema.obter_perfil_fundo(cnpj_fundo)
+                
+                # Processa todas as recomendações
+                recomendacoes = sistema.processar_recomendacoes(cnpj_fundo, top_n=10)
+                
+                # Salva recomendações com validação
+                sistema.salvar_recomendacoes(cnpj_fundo, recomendacoes)
+                
+            except Exception as e:
+                print(f"❌ Erro ao processar fundo {cnpj_fundo}: {str(e)}")
+                continue
+        
+        print(f"\n{'='*60}")
+        print("✅ PROCESSAMENTO CONCLUÍDO")
+        print(f"{'='*60}")

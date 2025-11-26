@@ -97,9 +97,7 @@ def recomendacao_baseada_em_grafo_compra_venda(df_fundos_ativos, cnpj_fundo, top
         return pandas.DataFrame()
     
     # Obtém ativos atualmente mantidos pelo fundo
-    ativos_atuais = set(dados_fundo[
-        dados_fundo['QT_POS_FINAL'] > 0
-    ]['CD_ATIVO'])
+    ativos_atuais = set(dados_fundo[dados_fundo['QT_POS_FINAL'] > 0]['CD_ATIVO'])
     
     print(f"\nAnalisando padrões de negociação de {len(ativos_atuais)} ativos mantidos")
     
@@ -159,7 +157,7 @@ def recomendacao_baseada_em_grafo_compra_venda(df_fundos_ativos, cnpj_fundo, top
                 uniao = len(ativos_atuais | outras_posicoes)
                 similaridade = intersecao / uniao if uniao > 0 else 0
                 
-                if similaridade > 0.05:  # Pelo menos 5% de sobreposição
+                if similaridade > 0.05:  # Pelo menos 10% de sobreposição
                     similaridade_fundos[outro_fundo] = similaridade
     
     print(f"Encontrados {len(similaridade_fundos)} fundos similares")
@@ -191,10 +189,10 @@ def recomendacao_baseada_em_grafo_compra_venda(df_fundos_ativos, cnpj_fundo, top
         # 4. Nível de atividade de negociação (10%)
         
         pontuacao = (
-            0.40 * rec['pontuacao_sentimento'] +
-            0.30 * rec['sentimento_ponderado'] +
-            0.20 * rec['proporcao_compra'] * 10 +  # Escala para faixa comparável
-            0.10 * (rec['pontuacao_atividade'] / max_atividade) * 10
+            rec['pontuacao_sentimento'] +
+            rec['sentimento_ponderado'] +
+            rec['proporcao_compra'] * 10 +  # Escala para faixa comparável
+            (rec['pontuacao_atividade'] / max_atividade) * 10
         )
         
         recomendacoes[ativo]['pontuacao_final'] = pontuacao
@@ -214,6 +212,9 @@ def recomendacao_baseada_em_grafo_compra_venda(df_fundos_ativos, cnpj_fundo, top
             }
             for ativo, dados in recomendacoes.items()
         ])
+
+        # Remove duplicatas baseado na coluna 'ativo'
+        resultados = resultados.drop_duplicates(subset=['ativo'], keep='first')
         
         # Filtra apenas sentimento positivo
         resultados = resultados[resultados['pontuacao'] > 0].sort_values(
@@ -221,7 +222,7 @@ def recomendacao_baseada_em_grafo_compra_venda(df_fundos_ativos, cnpj_fundo, top
         ).head(top_n)
         
         # Adiciona detalhes do ativo
-        resultados = funcoes_auxiliares.adiciona_detalhes_acao(df_fundos_ativos, resultados)
+        #resultados = funcoes_auxiliares.adiciona_detalhes_acao(df_fundos_ativos, resultados)
         
         if len(resultados) <= 0:
             print("Nenhum ativo com sentimento líquido positivo encontrado.")
